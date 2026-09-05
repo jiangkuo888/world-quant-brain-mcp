@@ -2826,11 +2826,9 @@ class BrainApiClient:
     async def get_production_correlation(self, alpha_id: str) -> Dict[str, Any]:
         """Get production correlation data for an alpha.
 
-        Polls every 30 seconds for up to 1 hour to handle platform rate-limiting.
-        For super alphas, the platform may return an empty body (HTTP 200) for a few
-        minutes after simulation completes while it computes the correlation data.
-        The polling loop handles this by retrying until data is available.
-        Returns {'status': 'pending', ...} after max_wait_seconds if data never arrives.
+        Uses the shared official-ACE-style Retry-After state machine. A response
+        without Retry-After is terminal; invalid data raises instead of being
+        treated as another compute wait. There is no synthetic total deadline.
 
         BRAIN allows only one in-flight correlation computation per account. If
         another request is already polling, this returns ``correlation_busy``
@@ -2927,85 +2925,13 @@ class BrainApiClient:
         return corr_data
 
     async def _poll_production_correlation(self, alpha_id: str) -> Dict[str, Any]:
-        max_wait_seconds = 3600  # 1 hour total
-        poll_interval = 30       # 30 seconds per attempt (matches reference implementation)
-        start_time = time.time()
-        attempt = 0
-        consecutive_empty = 0    # track consecutive empty-body responses
-        consecutive_network_failures = 0
+        # Direct workspace clients and the HTTP singleton must use one protocol.
+        shared_dir = str(Path(__file__).resolve().parents[1] / "scripts" / "mcp_singletons")
+        if shared_dir not in sys.path:
+            sys.path.insert(0, shared_dir)
+        from correlation_runtime_fix import _poll_correlation
 
-        while True:
-            elapsed = time.time() - start_time
-            if elapsed >= max_wait_seconds:
-                self.log(f"Production correlation timeout after {int(elapsed)}s for {alpha_id}", "WARNING")
-                return {
-                    'status': 'pending',
-                    'message': (
-                        f"Production correlation data for alpha {alpha_id} was not available "
-                        f"after {int(elapsed)}s of polling. The platform may still be computing "
-                        "it. Please retry check_correlation in a few minutes."
-                    ),
-                    'max': None,
-                    'records': [],
-                }
-            
-            attempt += 1
-            try:
-                if attempt % 5 == 1:
-                    self.log(f"[PC等待] 正在等待 Alpha {alpha_id} 的 PC 数据 (第 {attempt} 次查询, 已等待 {int(elapsed)}s)", "INFO")
-                
-                response = await self._request('GET', f"{self.base_url}/alphas/{alpha_id}/correlations/prod")
-                response.raise_for_status()
-                
-                text = (response.text or "").strip()
-                if not text:
-                    consecutive_empty += 1
-                    if consecutive_empty == 3:
-                        # Platform is still computing — log once so users understand the wait
-                        self.log(
-                            f"[PC计算中] Alpha {alpha_id} 的生产相关性数据尚未就绪 "
-                            f"(已收到 {consecutive_empty} 次空响应). "
-                            "平台正在计算中，通常需要 1-5 分钟，请耐心等待...",
-                            "INFO"
-                        )
-                    # BRAIN answers 200 + EMPTY BODY while it computes, and tells us how
-                    # long to wait via Retry-After (typically 1s). Honour it instead of
-                    # sleeping a flat 30s — that alone turns a multi-minute poll into
-                    # a few seconds and makes bulk screening practical.
-                    await asyncio.sleep(self._correlation_retry_after(response, poll_interval))
-                    continue
-
-                # Got a non-empty response — reset empty counter
-                consecutive_empty = 0
-                try:
-                    corr_data = response.json()
-                except json.JSONDecodeError:
-                    corr_data = None
-                if corr_data:
-                    # The payload is a HISTOGRAM, not a scalar: schema properties are
-                    # [min, max, alphas] and each record is [bucket_lo, bucket_hi, count].
-                    # There is NO top-level 'max' key, so deriving it here is what makes
-                    # the poller terminate at all.
-                    self._ensure_correlation_extrema(corr_data)
-                    if corr_data.get('max') is not None:
-                        self.log(f"[PC成功] Alpha {alpha_id} PC={corr_data['max']} (第 {attempt} 次查询, 耗时 {int(elapsed)}s)", "INFO")
-                        return corr_data
-                    
-            except (requests.RequestException, ConnectionError, TimeoutError) as e:
-                consecutive_network_failures += 1
-                retry_delay = min(5 * consecutive_network_failures, poll_interval)
-                self.log(
-                    f"Failed to get production correlation for {alpha_id} "
-                    f"(network failure {consecutive_network_failures}): {e}. "
-                    f"Retrying in {retry_delay}s",
-                    "WARNING"
-                )
-                await asyncio.sleep(retry_delay)
-                continue
-
-            consecutive_network_failures = 0
-            
-            await asyncio.sleep(poll_interval)
+        return await _poll_correlation(self, alpha_id, "prod")
 
     @staticmethod
     def _pnl_response_to_series(aid: str, pnl_data: dict) -> Optional[pd.Series]:
