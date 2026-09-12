@@ -30,7 +30,7 @@ import pandas as pd
 import zlib
 import msgpack
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel, Field, EmailStr, model_validator
+from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
 
 # Import the new forum client
 from forum_functions import forum_client
@@ -110,8 +110,15 @@ class SimulationSettings(BaseModel):
     testPeriod: str = "P0Y0M"
     selectionHandling: str = "POSITIVE"
     selectionLimit: int = 1000
-    maxTrade: str = "OFF"
+    maxTrade: str = "ON"
     componentActivation: str = "IS"
+
+    @field_validator("maxTrade", mode="before")
+    @classmethod
+    def require_max_trade_on(cls, value: Any) -> str:
+        if str(value).upper() != "ON":
+            raise ValueError("MaxTrade is a permanent research invariant and must be ON")
+        return "ON"
 
 class SimulationData(BaseModel):
     type: str = "REGULAR"  # "REGULAR" or "SUPER"
@@ -877,12 +884,14 @@ class BrainApiClient:
         
             self.log("🚀 Creating simulation...", "INFO")
             
+            simulation_type = simulation_data.type.upper()
+
             # Prepare settings based on simulation type
             settings_dict = simulation_data.settings.model_dump()
             
             # Remove fields based on simulation type
-            if simulation_data.type == "REGULAR":
-                # Remove SUPER-specific fields for REGULAR
+            if simulation_type in {"REGULAR", "REGION_AGNOSTIC"}:
+                # Remove SUPER-specific fields for regular and RA simulations.
                 settings_dict.pop('selectionHandling', None)
                 settings_dict.pop('selectionLimit', None)
                 settings_dict.pop('componentActivation', None)
@@ -892,15 +901,15 @@ class BrainApiClient:
             
             # Prepare simulation payload
             payload = {
-                'type': simulation_data.type,
+                'type': simulation_type,
                 'settings': settings_dict
             }
             
             # Add type-specific fields
-            if simulation_data.type == "REGULAR":
+            if simulation_type in {"REGULAR", "REGION_AGNOSTIC"}:
                 if simulation_data.regular:
                     payload['regular'] = simulation_data.regular
-            elif simulation_data.type == "SUPER":
+            elif simulation_type == "SUPER":
                 if simulation_data.combo:
                     payload['combo'] = simulation_data.combo
                 if simulation_data.selection:
@@ -916,7 +925,7 @@ class BrainApiClient:
                     "status_code": response.status_code,
                     "response": self._response_payload(response),
                     "request": {
-                        "type": simulation_data.type,
+                        "type": simulation_type,
                         "settings": settings_dict,
                         "has_regular": bool(simulation_data.regular),
                         "has_combo": bool(simulation_data.combo),
@@ -983,7 +992,7 @@ class BrainApiClient:
                     "status": progress_data.get("status"),
                     "progress": progress_data,
                     "request": {
-                        "type": simulation_data.type,
+                        "type": simulation_type,
                         "settings": settings_dict,
                         "has_regular": bool(simulation_data.regular),
                         "has_combo": bool(simulation_data.combo),
@@ -4670,7 +4679,7 @@ async def create_simulation(
     combo: Optional[str] = None,
     selection: Optional[str] = None,
     pasteurization: str = "ON",
-    max_trade: str = "OFF",
+    max_trade: str = "ON",
     selection_handling: str = "POSITIVE",
     selection_limit: int = 1000,
     component_activation: str = "IS",
@@ -4681,7 +4690,7 @@ async def create_simulation(
     This tool creates and starts a simulation with your alpha code. Use this after you have your alpha formula ready.
     if field type=VECTOR should deal with vec_ suffer vec_*(FIELD)
     Args:
-        type: Simulation type ("REGULAR" or "SUPER")
+        type: Simulation type ("REGULAR", "REGION_AGNOSTIC", or "SUPER")
         region: Market region (e.g., "USA")
         universe: Universe of stocks (e.g., "TOP3000")
         delay: Data delay (0 or 1)
@@ -5862,6 +5871,7 @@ async def get_documentation_page(page_id: str) -> Dict[str, Any]:
 @mcp.tool()
 async def create_multi_simulation(
     alpha_expressions: List[str],
+    simulation_type: str = "REGULAR",
     instrument_type: str = "EQUITY",
     region: str = "USA",
     universe: str = "TOP3000",
@@ -5876,10 +5886,10 @@ async def create_multi_simulation(
     lookback: Optional[int] = None,
     visualization: bool = False,
     pasteurization: str = "ON",
-    max_trade: str = "OFF"
+    max_trade: str = "ON"
 ) -> Dict[str, Any]:
     """
-    🚀 Create multiple regular alpha simulations on BRAIN platform in a single request.
+    🚀 Create multiple regular or region-agnostic simulations in one request.
     
     This tool creates a multisimulation with multiple regular alpha expressions,
     waits for all simulations to complete, and returns detailed results for each alpha.
@@ -5889,6 +5899,7 @@ async def create_multi_simulation(
     Call get_platform_setting_options to get the valid options for the simulation.
     Args:
         alpha_expressions: List of alpha expressions/code strings (2-10 expressions required)
+        simulation_type: "REGULAR" or "REGION_AGNOSTIC". Use REGION_AGNOSTIC for ALL/LARGE RA Parents.
         instrument_type: Type of instruments (default: "EQUITY")
         region: Market region (default: "USA")
         universe: Universe of stocks (default: "TOP3000")
@@ -5903,13 +5914,21 @@ async def create_multi_simulation(
         lookback: Historical lookback window. Only used for PYTHON simulations; defaults to 256 for PYTHON.
         visualization: Enable visualization (default: False)
         pasteurization: Pasteurization setting (default: "ON")
-        max_trade: Max trade setting (default: "OFF")
+        max_trade: Max trade setting (permanently "ON")
     
     Returns:
         Dictionary containing multisimulation results and individual alpha details
     """
     try:
         # Validate input
+        if str(max_trade).upper() != "ON":
+            return {"error": "MaxTrade is a permanent research invariant and must be ON"}
+        max_trade = "ON"
+        normalized_type = simulation_type.upper()
+        if normalized_type not in {"REGULAR", "REGION_AGNOSTIC"}:
+            return {"error": "simulation_type must be REGULAR or REGION_AGNOSTIC"}
+        if region.upper() == "ALL" and normalized_type != "REGION_AGNOSTIC":
+            return {"error": "Region ALL requires simulation_type=REGION_AGNOSTIC"}
         if len(alpha_expressions) < 2:
             return {"error": "At least 2 alpha expressions are required"}
         if len(alpha_expressions) > 10:
@@ -5943,7 +5962,7 @@ async def create_multi_simulation(
                 settings['nanHandling'] = nan_handling
 
             simulation_item = {
-                'type': 'REGULAR',
+                'type': normalized_type,
                 'settings': settings,
                 'regular': alpha_expr
             }
@@ -6092,10 +6111,18 @@ async def _wait_for_multisimulation_completion(location: str, expected_children:
 # CONCURRENT/DAILY_SIMULATION_LIMIT bodies, per-child CANCELLED statuses),
 # and never need multi-minute blocking tool calls.
 
-def _build_multisim_payload(alpha_expressions, instrument_type, region, universe,
+def _build_multisim_payload(alpha_expressions, simulation_type, instrument_type, region, universe,
                             delay, decay, neutralization, truncation, test_period,
                             unit_handling, nan_handling, language, lookback,
                             visualization, pasteurization, max_trade):
+    if str(max_trade).upper() != "ON":
+        raise ValueError("MaxTrade is a permanent research invariant and must be ON")
+    max_trade = "ON"
+    normalized_type = str(simulation_type).upper()
+    if normalized_type not in {"REGULAR", "REGION_AGNOSTIC"}:
+        raise ValueError("simulation_type must be REGULAR or REGION_AGNOSTIC")
+    if str(region).upper() == "ALL" and normalized_type != "REGION_AGNOSTIC":
+        raise ValueError("Region ALL requires simulation_type=REGION_AGNOSTIC")
     normalized_language = language.upper()
     payload = []
     for alpha_expr in alpha_expressions:
@@ -6118,7 +6145,7 @@ def _build_multisim_payload(alpha_expressions, instrument_type, region, universe
         else:
             settings['unitHandling'] = unit_handling
             settings['nanHandling'] = nan_handling
-        payload.append({'type': 'REGULAR', 'settings': settings,
+        payload.append({'type': normalized_type, 'settings': settings,
                         'regular': alpha_expr})
     return payload
 
@@ -6126,6 +6153,7 @@ def _build_multisim_payload(alpha_expressions, instrument_type, region, universe
 @mcp.tool()
 async def submit_multi_simulation(
     alpha_expressions: List[str],
+    simulation_type: str = "REGULAR",
     instrument_type: str = "EQUITY",
     region: str = "USA",
     universe: str = "TOP3000",
@@ -6140,7 +6168,7 @@ async def submit_multi_simulation(
     lookback: Optional[int] = None,
     visualization: bool = False,
     pasteurization: str = "ON",
-    max_trade: str = "OFF"
+    max_trade: str = "ON"
 ) -> Dict[str, Any]:
     """Stage 1/3: submit a multisimulation and return IMMEDIATELY (seconds).
 
@@ -6156,7 +6184,7 @@ async def submit_multi_simulation(
             return {"error": "Maximum 10 alpha expressions allowed per request"}
         await brain_client.ensure_authenticated()
         payload = _build_multisim_payload(
-            alpha_expressions, instrument_type, region, universe, delay, decay,
+            alpha_expressions, simulation_type, instrument_type, region, universe, delay, decay,
             neutralization, truncation, test_period, unit_handling, nan_handling,
             language, lookback, visualization, pasteurization, max_trade)
         response = await brain_client._request(
