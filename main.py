@@ -45,6 +45,11 @@ import candidate_pool as cpool
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Default to a one-year holdout inside the five-year IS window.  Callers may
+# override this explicitly, but all MCP simulation entry points share this
+# value so single, multi, staged, and model-validated requests cannot drift.
+DEFAULT_TEST_PERIOD = "P1Y0M"
+
 
 def archive_performance_comparison(
     alpha_id: str, scope: str, payload: Dict[str, Any]
@@ -107,7 +112,7 @@ class SimulationSettings(BaseModel):
     language: str = "FASTEXPR"
     lookback: Optional[int] = None
     visualization: bool = True
-    testPeriod: str = "P0Y0M"
+    testPeriod: str = DEFAULT_TEST_PERIOD
     selectionHandling: str = "POSITIVE"
     selectionLimit: int = 1000
     maxTrade: str = "ON"
@@ -4670,7 +4675,7 @@ async def create_simulation(
     decay: int = 4,
     neutralization: str = "SUBINDUSTRY",
     truncation: float = 0.08,
-    test_period: str = "P0Y0M",
+    test_period: str = DEFAULT_TEST_PERIOD,
     language: str = "FASTEXPR",
     unit_handling: str = "VERIFY",
     nan_handling: str = "ON",
@@ -4697,7 +4702,7 @@ async def create_simulation(
         decay: Decay value for the simulation
         neutralization: Neutralization method
         truncation: Truncation value
-        test_period: Test period (e.g., "P0Y0M" for 1 year 6 months)
+        test_period: Test period (default "P1Y0M", reserving the final IS year)
         language: Expression language ("FASTEXPR" or "PYTHON")
         unit_handling: Unit handling method. Used for FASTEXPR simulations.
         nan_handling: NaN handling method
@@ -5879,7 +5884,7 @@ async def create_multi_simulation(
     decay: int = 4,
     neutralization: str = "INDUSTRY",
     truncation: float = 0.0,
-    test_period: str = "P0Y0M",
+    test_period: str = DEFAULT_TEST_PERIOD,
     unit_handling: str = "VERIFY",
     nan_handling: str = "OFF",
     language: str = "FASTEXPR",
@@ -5907,7 +5912,7 @@ async def create_multi_simulation(
         decay: Decay value (default: 4)
         neutralization: Neutralization method (default: "NONE")
         truncation: Truncation value (default: 0.0)
-        test_period: Test period (default: "P0Y0M")
+        test_period: Test period (default: "P1Y0M")
         unit_handling: Unit handling method. Used for FASTEXPR simulations.
         nan_handling: NaN handling method. Used for FASTEXPR simulations.
         language: Expression language ("FASTEXPR" or "PYTHON")
@@ -6161,7 +6166,7 @@ async def submit_multi_simulation(
     decay: int = 4,
     neutralization: str = "INDUSTRY",
     truncation: float = 0.0,
-    test_period: str = "P0Y0M",
+    test_period: str = DEFAULT_TEST_PERIOD,
     unit_handling: str = "VERIFY",
     nan_handling: str = "OFF",
     language: str = "FASTEXPR",

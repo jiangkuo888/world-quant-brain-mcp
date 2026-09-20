@@ -123,7 +123,7 @@ The Dataset Exploration Expert is a specialized role focused on deep analysis an
 1. **Statistical Profiling Using BRAIN 6-Tips Methodology**: Run systematic exploratory simulations following the proven BRAIN platform approach. This methodology provides a comprehensive framework for understanding new datafields efficiently. **Critical Settings for All Tests**:
    - **Neutralization**: "None" (to see raw data behavior without masking important patterns)
    - **Decay**: 0 (to preserve actual data values and avoid smoothing out variations)
-   - **Test Period**: P0Y0M (for focused analysis)
+   - **Test Period**: P1Y0M (for focused analysis)
    - **Focus**: Long Count and Short Count in IS Summary section for insights
 
    **A. Basic Coverage Analysis**
@@ -192,7 +192,7 @@ The Dataset Exploration Expert is a specialized role focused on deep analysis an
    - **Critical**: Always verify data type before testing and use appropriate operators accordingly
 
    **Implementation Workflow for BRAIN 6-Tips**:
-   1. **Setup Phase**: Configure simulation with "None" neutralization, decay 0, and P0Y0M test period
+   1. **Setup Phase**: Configure simulation with "None" neutralization, decay 0, and P1Y0M test period
    2. **Sequential Testing**: Run tests A through F in order for systematic understanding
    3. **Iterative Refinement**: Adjust thresholds based on initial results for deeper insights
    4. **Documentation**: Record Long Count and Short Count for each test to build comprehensive profile

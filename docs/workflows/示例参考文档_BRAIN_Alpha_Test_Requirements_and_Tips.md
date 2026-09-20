@@ -59,7 +59,7 @@ When improving an alpha, prioritize modifications that stay within the same data
 This principle, highlighted in BRAIN docs and forums, ensures alphas remain "atomic" and competitive.
 
 ### Understanding Datafields Before Improvements
-Before optimizing alphas, thoroughly evaluate the datafields involved to address potential issues like unit mismatches or update frequencies. This prevents common pitfalls in tests (e.g., NaN errors, poor sub-universe performance) and ensures appropriate operators are used. Use these 6 methods from the BRAIN exploration guide (adapted for quick simulation in "None" neutralization, decay 0, test_period P0Y0M):
+Before optimizing alphas, thoroughly evaluate the datafields involved to address potential issues like unit mismatches or update frequencies. This prevents common pitfalls in tests (e.g., NaN errors, poor sub-universe performance) and ensures appropriate operators are used. Use these 6 methods from the BRAIN exploration guide (adapted for quick simulation in "None" neutralization, decay 0, test_period P1Y0M):
 
 1. **Basic Coverage**: For example, Simulate `datafield` (or `vec_op(datafield)` for vectors). Insight: % coverage = (Long + Short Count) / Universe Size.
 2. **Non-Zero Coverage**: For example, Simulate `datafield != 0 ? 1 : 0`. Insight: Actual meaningful data points.

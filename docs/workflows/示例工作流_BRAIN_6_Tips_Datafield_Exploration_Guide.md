@@ -12,7 +12,7 @@
 
 WorldQuant BRAIN has thousands of datafields for you to create alphas. But how do you quickly understand a new datafield? Here are 6 proven methods to evaluate and understand new datasets efficiently.
 
-**Important**: Simulate the below expressions in **"None" neutralization** and **decay 0 setting** and **test_period P0Y0M**. Obtain insights of specific parameters using the **Long Count** and **Short Count** in the **IS Summary section** of the results.
+**Important**: Simulate the below expressions in **"None" neutralization** and **decay 0 setting** and **test_period P1Y0M**. Obtain insights of specific parameters using the **Long Count** and **Short Count** in the **IS Summary section** of the results.
 **Watch Out**: - Data type (matrix/vector), please note, these are two special definition here and not similar as we knew in math. Different data types have different characteristics and usage rule; if it is a matrix data type, you can use the datafield directly, but if it is a vector data type, you should use a vector operator to convert the datafield to a matrix data type. Thus, for a vector data type, you should find proper vector operator via mcp then put it into the following test.
 
 ---
